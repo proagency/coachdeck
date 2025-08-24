@@ -42,9 +42,21 @@ enum BillingTerm {
   YEARLY 
   }
 
-enum PlanType { ONE_TIME SUBSCRIPTION }
-enum PaymentChannel { BANK E_WALLET }
-enum InvoiceStatus { PENDING AWAITING_PROOF UNDER_REVIEW PAID REJECTED }
+enum PlanType { 
+  ONE_TIME 
+  SUBSCRIPTION 
+  }
+enum PaymentChannel { 
+  BANK 
+  E_WALLET 
+  }
+enum InvoiceStatus { 
+  PENDING 
+  AWAITING_PROOF 
+  UNDER_REVIEW 
+  PAID 
+  REJECTED 
+  }
 
 model AppConfig {
   id                 String   @id @default("app")
