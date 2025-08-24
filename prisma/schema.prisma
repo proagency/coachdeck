@@ -1,48 +1,49 @@
 generator client { 
   provider = "prisma-client-js" 
-  }
+}
 datasource db { 
   provider = "postgresql"
   url = env("DATABASE_URL") 
-  }
+}
 
 enum AccessLevel { 
   ADMIN 
   USER 
-  }
+}
 enum Role { 
   SUPER_ADMIN 
   COACH 
   STUDENT 
-  }
+}
 enum UserStatus { 
   PENDING 
   ACTIVE 
   DISABLED 
-  }
+}
 enum TicketStatus { 
   OPEN 
   IN_PROGRESS 
   RESOLVED 
   CLOSED 
-  }
+}
 enum TicketPriority { 
   LOW 
   MEDIUM 
   HIGH 
-  }
+}
 enum PlanTier { 
   FREE 
   STARTER 
   PRO 
-  }
+}
 enum BillingTerm { 
   NONE 
   MONTHLY 
   YEARLY 
-  }
+}
 
-enum PlanType { 
+/* --- Payments-specific enums --- */
+enum PaymentType { 
   ONE_TIME 
   SUBSCRIPTION 
   }
@@ -52,45 +53,28 @@ enum PaymentChannel {
   }
 enum InvoiceStatus { 
   PENDING 
-  AWAITING_PROOF 
+  SUBMITTED 
   UNDER_REVIEW 
   PAID 
   REJECTED 
+  CANCELED 
   }
 
-model AppConfig {
-  id                 String   @id @default("app")
-  starterMonthly     Int      @default(0)
-  starterYearly      Int      @default(0)
-  proMonthly         Int      @default(0)
-  proYearly          Int      @default(0)
-  xenditApiKey       String?
-  xenditAccountId    String?
-  checkoutWebhookUrl String?
-  currency           String   @default("PHP")
-  updatedAt          DateTime @updatedAt
-}
+/* ---------------- Core auth & app models (unchanged where not relevant) ---------------- */
 
 model User {
   id            String       @id @default(cuid())
   name          String?
-  email         String?      @unique
-  passwordHash  String?
   phone         String?
+  email         String?      @unique
   image         String?
   emailVerified DateTime?
   accessLevel   AccessLevel  @default(USER)
   role          Role         @default(STUDENT)
-  status        UserStatus   @default(PENDING)
-  planTier      PlanTier     @default(FREE)
-  planTerm      BillingTerm  @default(NONE)
+  status        UserStatus   @default(ACTIVE)
   createdAt     DateTime     @default(now())
 
-  bookingUrl    String?
-  bookingLabel  String?
-
-  paymentsConfig CoachPaymentsConfig?
-
+  // Coaching app relations
   decks             Deck[]          @relation("CoachDecks")
   memberships       Membership[]
   tickets           Ticket[]        @relation("AuthorTickets")
@@ -98,78 +82,20 @@ model User {
   comments          TicketComment[]
   documents         Document[]      @relation("AuthorDocs")
   progress          ProgressEntry[] @relation("AuthorProgress")
-  invoicesAsStudent Invoice[]       @relation("StudentInvoices")
-  invoicesAsCoach   Invoice[]       @relation("CoachInvoices")
+  invitesCreated    Invite[]        @relation("InvitesCreatedBy")
+  invitesAccepted   Invite[]        @relation("InvitesAcceptedBy")
 
-  resetTokens PasswordResetToken[]
-}
+  // Payments relations (FIX: add these opposite sides)
+  coachPaymentsConfig CoachPaymentsConfig?
+  bankAccounts        CoachBankAccount[]
+  ewallets            CoachEwallet[]
+  paymentPlans        PaymentPlan[]
+  invoicesAuthored    Invoice[] @relation("InvoiceStudent") // as Student
+  invoicesForCoach    Invoice[] @relation("InvoiceCoach")   // as Coach
 
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
-
-model CoachPaymentsConfig {
-  id            String  @id @default(cuid())
-  coachId       String  @unique
-  coach         User    @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  enableBank    Boolean @default(false)
-  enableEwallet Boolean @default(false)
-  bankAccounts  CoachBankAccount[]
-  ewallets      CoachEwallet[]
-  plans         PaymentPlan[]
-  updatedAt     DateTime @updatedAt
-}
-
-model CoachBankAccount {
-  id            String  @id @default(cuid())
-  coachId       String
-  coach         User    @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  bankName      String
-  bankBranch    String?
-  accountName   String
-  accountNumber String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([coachId])
-}
-
-model CoachEwallet {
-  id            String  @id @default(cuid())
-  coachId       String
-  coach         User    @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  provider      String
-  accountName   String
-  accountNumber String
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([coachId])
-}
-
-model PaymentPlan {
-  id          String   @id @default(cuid())
-  coachId     String
-  coach       User     @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  type        PlanType
-  amountCents Int
-  currency    String   @default("PHP")
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  invoices    Invoice[]
-  @@index([coachId, active])
+  // NextAuth v4
+  accounts Account[]
+  sessions Session[]
 }
 
 model Deck {
@@ -183,7 +109,7 @@ model Deck {
   documents  Document[]
   progress   ProgressEntry[]
   tickets    Ticket[]
-  invoices   Invoice[]
+  invites    Invite[]
 
   @@index([coachId])
 }
@@ -195,6 +121,25 @@ model Membership {
   studentId String   @unique
   student   User     @relation(fields: [studentId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Invite {
+  id           String   @id @default(cuid())
+  deckId       String
+  deck         Deck     @relation(fields: [deckId], references: [id])
+  email        String
+  token        String   @unique
+  expiresAt    DateTime
+
+  createdById  String
+  createdBy    User     @relation("InvitesCreatedBy", fields: [createdById], references: [id])
+
+  acceptedById String?
+  acceptedBy   User?    @relation("InvitesAcceptedBy", fields: [acceptedById], references: [id])
+  acceptedAt   DateTime?
+
+  @@index([deckId])
+  @@index([token])
 }
 
 model Document {
@@ -261,30 +206,121 @@ model TicketComment {
   @@index([ticketId])
 }
 
-model Invoice {
-  id            String          @id @default(cuid())
-  planId        String
-  plan          PaymentPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+/* ---------------- Payments models (REPAIRED RELATIONS) ---------------- */
+
+/** 1:1 config with the coach; no child arrays here to avoid opposite-field errors **/
+model CoachPaymentsConfig {
+  id            String   @id @default(cuid())
+  coachId       String   @unique
+  coach         User     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  enableBank    Boolean  @default(false)
+  enableEwallet Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/** Bank accounts belong directly to the coach (User). **/
+model CoachBankAccount {
+  id            String   @id @default(cuid())
   coachId       String
-  coach         User            @relation("CoachInvoices", fields: [coachId], references: [id], onDelete: Cascade)
-  studentId     String
-  student       User            @relation("StudentInvoices", fields: [studentId], references: [id], onDelete: Cascade)
-  deckId        String?
-  deck          Deck?           @relation(fields: [deckId], references: [id], onDelete: SetNull)
+  coach         User     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  bankName      String
+  accountName   String
+  accountNumber String
+  branch        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  channel       PaymentChannel
-  amountCents   Int
-  currency      String          @default("PHP")
-  status        InvoiceStatus   @default(PENDING)
+  @@index([coachId])
+}
 
-  proofUrl         String?
-  proofUploadedAt  DateTime?
+/** E-wallet channels belong directly to the coach (User). **/
+model CoachEwallet {
+  id        String   @id @default(cuid())
+  coachId   String
+  coach     User     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  provider  String   // e.g., GCash, Maya
+  handle    String   // phone number / username
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  notes         String?
+  @@index([coachId])
+}
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+/** Plans belong directly to the coach (User). **/
+model PaymentPlan {
+  id          String       @id @default(cuid())
+  coachId     String
+  coach       User         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  type        PaymentType
+  amount      Int
+  currency    String       @default("PHP")
+  active      Boolean      @default(true)
+  invoices    Invoice[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  @@index([coachId, status])
+  @@index([coachId])
+}
+
+/** Invoices connect coach ↔ student, and optionally a plan. **/
+model Invoice {
+  id         String         @id @default(cuid())
+  coachId    String
+  coach      User           @relation("InvoiceCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User           @relation("InvoiceStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  planId     String?
+  plan       PaymentPlan?   @relation(fields: [planId], references: [id])
+  title      String
+  description String?
+  amount     Int
+  currency   String         @default("PHP")
+  channel    PaymentChannel
+  status     InvoiceStatus  @default(PENDING)
+  proofKey   String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([coachId])
   @@index([studentId])
+  @@index([status])
+}
+
+/* ---------------- NextAuth v4 tables ---------------- */
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
