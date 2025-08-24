@@ -1,51 +1,50 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+// app/api/invoices/[id]/upload/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { InvoiceStatus } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
-// Validate payload against your Prisma enum
-const Body = z.object({
-  status: z.nativeEnum(InvoiceStatus),
-});
+export const runtime = "nodejs"; // we need fs
 
-export async function PATCH(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> } // <-- Next 15: params is a Promise
+// Max: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> } // 👈 async params in Next 15
 ) {
-  const { id } = await ctx.params;          // <-- must await before using
-  const session = await getServerSession(authOptions);
-  const me = session?.user as any;
+  const { id } = await context.params; // 👈 must await
+  if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
 
-  if (!me) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const form = await req.formData();
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "file_required" }, { status: 400 });
   }
 
-  // Only SUPER_ADMIN or the owning COACH can change invoice status
-  const isSuperAdmin = me.role === "SUPER_ADMIN";
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    select: { id: true, coachId: true, studentId: true, status: true },
-  });
-  if (!invoice) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: "file_too_large" }, { status: 413 });
   }
 
-  const isCoachOwner = me.role === "COACH" && me.id === invoice.coachId;
-  if (!isSuperAdmin && !isCoachOwner) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  // Save to /tmp (ephemeral). Swap to S3/GCS/etc. later as needed.
+  const uploadDir = "/tmp/coachdeck-uploads";
+  await mkdir(uploadDir, { recursive: true });
+  const ext = (file.type?.split("/")[1] || "bin").toLowerCase();
+  const key = `${id}-${randomUUID()}.${ext}`;
+  const filepath = join(uploadDir, key);
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-  }
+  const buf = Buffer.from(await file.arrayBuffer());
+  await writeFile(filepath, buf);
 
+  // Mark invoice as "SUBMITTED" and store proof key
   const updated = await prisma.invoice.update({
     where: { id },
-    data: { status: parsed.data.status },
-    select: { id: true, status: true },
+    data: {
+      proofKey: filepath, // or store just `key` if you later move to object storage
+      status: "SUBMITTED",
+    },
+    select: { id: true, status: true, coachId: true, studentId: true, amount: true, currency: true, title: true },
   });
 
   return NextResponse.json({ ok: true, invoice: updated });
