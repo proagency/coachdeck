@@ -1,0 +1,36 @@
+{
+  "name": "coachdeck",
+  "private": true,
+  "version": "1.0.6",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
+    "seed": "node --loader ts-node/esm prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.14.0",
+    "bcryptjs": "^2.4.3",
+    "next": "15.5.0",
+    "next-auth": "4.24.11",
+    "nodemailer": "^6",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.12",
+    "@types/react": "19.1.10",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "prisma": "6.14.0",
+    "tailwindcss": "^3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  },
+  "engines": { "node": ">=18.18.0" }
+}
