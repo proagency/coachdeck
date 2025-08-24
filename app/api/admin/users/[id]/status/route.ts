@@ -1,18 +1,44 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { UserStatus } from "@prisma/client";
+import { prisma } from "@/lib/db";
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+// Zod schema for payload
+const Body = z.object({
+  status: z.enum(["PENDING", "ACTIVE", "DISABLED"]),
+});
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> } // ← async params
+) {
+  const { id } = await params; // ← must await in Next 15
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: session.user.email } });
-  if (!me || me.role !== "SUPER_ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const me = session?.user;
 
-  const form = await req.formData();
-  const status = String(form.get("status") || "");
-  if (!["ACTIVE","DISABLED"].includes(status)) return NextResponse.json({ error: "bad_status" }, { status: 400 });
-  await prisma.user.update({ where: { id: params.id }, data: { status: status as UserStatus } });
-  return NextResponse.json({ ok: true });
+  // Only Super Admins can change user status
+  if (!me || (me as any).role !== "SUPER_ADMIN") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const parse = Body.safeParse(await req.json().catch(() => ({})));
+  if (!parse.success) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
+
+  const { status } = parse.data;
+
+  // Optionally disallow changing your own status
+  if ((me as any).id === id) {
+    return NextResponse.json({ error: "cannot_modify_self" }, { status: 409 });
+  }
+
+  const user = await prisma.user.update({
+    where: { id },
+    data: { status },
+    select: { id: true, email: true, status: true, role: true },
+  });
+
+  return NextResponse.json({ ok: true, user });
 }
