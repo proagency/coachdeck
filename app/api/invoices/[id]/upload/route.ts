@@ -1,28 +1,47 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+// app/api/invoices/[id]/upload/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"; // fs required
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: s.user.email }});
-  if (!me || me.role!=="STUDENT") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-  const inv = await prisma.invoice.findFirst({ where: { id: params.id, studentId: me.id } });
-  if (!inv) return NextResponse.json({ error: "not_found" }, { status: 404 });
+export async function POST(req: NextRequest, ctx: any) {
+  // Next 15: params must be awaited
+  const { id } = await ctx.params;
+  if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
 
   const form = await req.formData();
-  const file = form.get("file") as File | null;
-  if (!file) return NextResponse.json({ error: "file_required" }, { status: 400 });
-  if (file.size > 10*1024*1024) return NextResponse.json({ error: "too_large" }, { status: 400 });
+  const file = form.get("file");
 
-  // In production: upload to S3/R2/etc. For now, store as data URL (demo).
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "file_required" }, { status: 400 });
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: "file_too_large" }, { status: 413 });
+  }
+
+  // Save to /tmp (ephemeral). Swap to S3/R2 later.
+  const uploadDir = "/tmp/coachdeck-uploads";
+  await mkdir(uploadDir, { recursive: true });
+  const ext = (file.type?.split("/")[1] || "bin").toLowerCase();
+  const key = `${id}-${randomUUID()}.${ext}`;
+  const filepath = join(uploadDir, key);
+
   const buf = Buffer.from(await file.arrayBuffer());
-  const dataUrl = "data:"+file.type+";base64,"+buf.toString("base64");
-  const updated = await prisma.invoice.update({ where: { id: inv.id }, data: { proofUrl: dataUrl, proofUploadedAt: new Date(), status: "AWAITING_PROOF" } });
+  await writeFile(filepath, buf);
 
-  return NextResponse.json({ invoice: updated });
+  const updated = await prisma.invoice.update({
+    where: { id },
+    data: { proofKey: filepath, status: "SUBMITTED" },
+    select: {
+      id: true, status: true, coachId: true, studentId: true,
+      amount: true, currency: true, title: true
+    },
+  });
+
+  return NextResponse.json({ ok: true, invoice: updated });
 }
