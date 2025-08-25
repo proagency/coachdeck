@@ -42,9 +42,22 @@ enum BillingTerm {
   YEARLY 
 }
 
-enum PaymentType { ONE_TIME SUBSCRIPTION }
-enum PaymentChannel { BANK E_WALLET }
-enum InvoiceStatus { PENDING SUBMITTED UNDER_REVIEW PAID REJECTED CANCELED }
+enum PaymentType { 
+  ONE_TIME 
+  SUBSCRIPTION 
+  }
+enum PaymentChannel { 
+  BANK 
+  E_WALLET 
+  }
+enum InvoiceStatus { 
+  PENDING 
+  SUBMITTED 
+  UNDER_REVIEW 
+  PAID 
+  REJECTED 
+  CANCELED 
+  }
 
 model User {
   id            String       @id @default(cuid())
