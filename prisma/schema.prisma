@@ -1,103 +1,116 @@
-generator client { 
-  provider = "prisma-client-js" 
+generator client {
+  provider = "prisma-client-js"
 }
-datasource db { 
+
+datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL") 
+  url      = env("DATABASE_URL")
 }
 
-enum AccessLevel { 
-  ADMIN 
-  USER 
-}
-enum Role { 
-  SUPER_ADMIN 
-  COACH 
-  STUDENT 
-}
-enum UserStatus { 
-  PENDING 
-  ACTIVE 
-  DISABLED 
-}
-enum TicketStatus { 
-  OPEN 
-  IN_PROGRESS 
-  RESOLVED 
-  CLOSED 
-}
-enum TicketPriority { 
-  LOW 
-  MEDIUM 
-  HIGH 
-}
-enum PlanTier { 
-  FREE 
-  STARTER 
-  PRO 
-}
-enum BillingTerm { 
-  NONE 
-  MONTHLY 
-  YEARLY 
+enum AccessLevel {
+  ADMIN
+  USER
 }
 
-enum PaymentType { 
-  ONE_TIME 
-  SUBSCRIPTION 
-  }
-enum PaymentChannel { 
-  BANK 
-  E_WALLET 
-  }
-enum InvoiceStatus { 
-  PENDING 
-  SUBMITTED 
-  UNDER_REVIEW 
-  PAID 
-  REJECTED 
-  CANCELED 
-  }
+enum Role {
+  SUPER_ADMIN
+  COACH
+  STUDENT
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PRO
+}
+
+enum BillingTerm {
+  NONE
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentType {
+  ONE_TIME
+  SUBSCRIPTION
+}
+
+enum PaymentChannel {
+  BANK
+  E_WALLET
+}
+
+enum InvoiceStatus {
+  PENDING
+  SUBMITTED
+  UNDER_REVIEW
+  PAID
+  REJECTED
+  CANCELED
+}
 
 model User {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   name          String?
   phone         String?
-  email         String?      @unique
+  email         String?     @unique
   image         String?
   emailVerified DateTime?
-  accessLevel   AccessLevel  @default(USER)
-  role          Role         @default(STUDENT)
-  status        UserStatus   @default(ACTIVE)
-  createdAt     DateTime     @default(now())
+  accessLevel   AccessLevel @default(USER)
+  role          Role        @default(STUDENT)
+  status        UserStatus  @default(ACTIVE)
+  createdAt     DateTime    @default(now())
 
-  decks             Deck[]          @relation("CoachDecks")
-  memberships       Membership[]
-  tickets           Ticket[]        @relation("AuthorTickets")
-  assigned          Ticket[]        @relation("AssignedTickets")
-  comments          TicketComment[]
-  documents         Document[]      @relation("AuthorDocs")
-  progress          ProgressEntry[] @relation("AuthorProgress")
-  invitesCreated    Invite[]        @relation("InvitesCreatedBy")
-  invitesAccepted   Invite[]        @relation("InvitesAcceptedBy")
+  passwordHash String?
+
+  decks           Deck[]          @relation("CoachDecks")
+  memberships     Membership[]
+  tickets         Ticket[]        @relation("AuthorTickets")
+  assigned        Ticket[]        @relation("AssignedTickets")
+  comments        TicketComment[]
+  documents       Document[]      @relation("AuthorDocs")
+  progress        ProgressEntry[] @relation("AuthorProgress")
+  invitesCreated  Invite[]        @relation("InvitesCreatedBy")
+  invitesAccepted Invite[]        @relation("InvitesAcceptedBy")
 
   coachPaymentsConfig CoachPaymentsConfig?
   bankAccounts        CoachBankAccount[]
   ewallets            CoachEwallet[]
   paymentPlans        PaymentPlan[]
-  invoicesAuthored    Invoice[] @relation("InvoiceStudent")
-  invoicesForCoach    Invoice[] @relation("InvoiceCoach")
+  invoicesAuthored    Invoice[]            @relation("InvoiceStudent")
+  invoicesForCoach    Invoice[]            @relation("InvoiceCoach")
+
+  resetTokens PasswordResetToken[]
 
   accounts Account[]
   sessions Session[]
 }
 
 model Deck {
-  id         String   @id @default(cuid())
-  name       String
-  coachId    String
-  coach      User     @relation("CoachDecks", fields: [coachId], references: [id])
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  coachId   String
+  coach     User     @relation("CoachDecks", fields: [coachId], references: [id])
+  createdAt DateTime @default(now())
 
   membership Membership?
   documents  Document[]
@@ -118,18 +131,18 @@ model Membership {
 }
 
 model Invite {
-  id           String   @id @default(cuid())
-  deckId       String
-  deck         Deck     @relation(fields: [deckId], references: [id])
-  email        String
-  token        String   @unique
-  expiresAt    DateTime
+  id        String   @id @default(cuid())
+  deckId    String
+  deck      Deck     @relation(fields: [deckId], references: [id])
+  email     String
+  token     String   @unique
+  expiresAt DateTime
 
-  createdById  String
-  createdBy    User     @relation("InvitesCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation("InvitesCreatedBy", fields: [createdById], references: [id])
 
   acceptedById String?
-  acceptedBy   User?    @relation("InvitesAcceptedBy", fields: [acceptedById], references: [id])
+  acceptedBy   User?     @relation("InvitesAcceptedBy", fields: [acceptedById], references: [id])
   acceptedAt   DateTime?
 
   @@index([deckId])
@@ -169,19 +182,19 @@ model ProgressEntry {
 }
 
 model Ticket {
-  id           String         @id @default(cuid())
+  id           String          @id @default(cuid())
   deckId       String
-  deck         Deck           @relation(fields: [deckId], references: [id])
+  deck         Deck            @relation(fields: [deckId], references: [id])
   authorId     String
-  author       User           @relation("AuthorTickets", fields: [authorId], references: [id])
+  author       User            @relation("AuthorTickets", fields: [authorId], references: [id])
   assignedToId String?
-  assignedTo   User?          @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  assignedTo   User?           @relation("AssignedTickets", fields: [assignedToId], references: [id])
   title        String
   body         String
-  status       TicketStatus   @default(OPEN)
-  priority     TicketPriority @default(MEDIUM)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  status       TicketStatus    @default(OPEN)
+  priority     TicketPriority  @default(MEDIUM)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   comments     TicketComment[]
 
   @@index([deckId])
@@ -237,39 +250,39 @@ model CoachEwallet {
 }
 
 model PaymentPlan {
-  id          String       @id @default(cuid())
+  id          String      @id @default(cuid())
   coachId     String
-  coach       User         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach       User        @relation(fields: [coachId], references: [id], onDelete: Cascade)
   name        String
   description String?
   type        PaymentType
   amount      Int
-  currency    String       @default("PHP")
-  active      Boolean      @default(true)
+  currency    String      @default("PHP")
+  active      Boolean     @default(true)
   invoices    Invoice[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   @@index([coachId])
 }
 
 model Invoice {
-  id         String         @id @default(cuid())
-  coachId    String
-  coach      User           @relation("InvoiceCoach", fields: [coachId], references: [id], onDelete: Cascade)
-  studentId  String
-  student    User           @relation("InvoiceStudent", fields: [studentId], references: [id], onDelete: Cascade)
-  planId     String?
-  plan       PaymentPlan?   @relation(fields: [planId], references: [id])
-  title      String
+  id          String         @id @default(cuid())
+  coachId     String
+  coach       User           @relation("InvoiceCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User           @relation("InvoiceStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  planId      String?
+  plan        PaymentPlan?   @relation(fields: [planId], references: [id])
+  title       String
   description String?
-  amount     Int
-  currency   String         @default("PHP")
-  channel    PaymentChannel
-  status     InvoiceStatus  @default(PENDING)
-  proofKey   String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  amount      Int
+  currency    String         @default("PHP")
+  channel     PaymentChannel
+  status      InvoiceStatus  @default(PENDING)
+  proofKey    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@index([coachId])
   @@index([studentId])
@@ -308,4 +321,16 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
