@@ -1,55 +1,52 @@
-import { NextResponse } from "next/server";
+// app/api/coach/payments/ewallets/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { z } from "zod";
 
+const CreateBody = z.object({
+  provider: z.string().min(1),
+  handle: z.string().min(1), // phone/username/etc
+});
+
+// List wallets for the signed-in coach
 export async function GET() {
-  const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: s.user.email }, select: { id: true, role: true }});
-  if (!me || (me.role !== "COACH" && me.role !== "SUPER_ADMIN")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const items = await prisma.coachEwallet.findMany({ where: { coachId: me.id }, orderBy: { createdAt: "desc" }});
-  return NextResponse.json({ ewallets: items });
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email ?? null;
+  if (!email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const me = await prisma.user.findUnique({ where: { email } });
+  if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const wallets = await prisma.coachEwallet.findMany({
+    where: { coachId: me.id },
+    orderBy: { createdAt: "desc" },
+  });
+  return NextResponse.json({ wallets });
 }
-export async function POST(req: Request) {
-  const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: s.user.email }});
-  if (!me || (me.role !== "COACH" && me.role !== "SUPER_ADMIN")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const count = await prisma.coachEwallet.count({ where: { coachId: me.id }});
-  if (count >= 5) return NextResponse.json({ error: "max_channels" }, { status: 400 });
-  const j = await req.json().catch(()=>null);
-  if (!j?.provider || !j?.accountName || !j?.accountNumber) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-  const item = await prisma.coachEwallet.create({ data: { coachId: me.id, provider: String(j.provider), accountName: String(j.accountName), accountNumber: String(j.accountNumber), notes: j.notes ? String(j.notes) : null } });
-  return NextResponse.json({ ewallet: item }, { status: 201 });
-}
-export async function PATCH(req: Request) {
-  const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: s.user.email }});
-  if (!me || (me.role !== "COACH" && me.role !== "SUPER_ADMIN")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const j = await req.json().catch(()=>null);
-  if (!j?.id) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-  const owned = await prisma.coachEwallet.findFirst({ where: { id: j.id, coachId: me.id }});
-  if (!owned) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const data: any = {};
-  if (j.provider != null) data.provider = String(j.provider);
-  if (j.accountName != null) data.accountName = String(j.accountName);
-  if (j.accountNumber != null) data.accountNumber = String(j.accountNumber);
-  if (j.notes != null) data.notes = j.notes ? String(j.notes) : null;
-  const item = await prisma.coachEwallet.update({ where: { id: j.id }, data });
-  return NextResponse.json({ ewallet: item });
-}
-export async function DELETE(req: Request) {
-  const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const me = await prisma.user.findUnique({ where: { email: s.user.email }});
-  if (!me || (me.role !== "COACH" && me.role !== "SUPER_ADMIN")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-  const owned = await prisma.coachEwallet.findFirst({ where: { id, coachId: me.id }});
-  if (!owned) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  await prisma.coachEwallet.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+
+// Create wallet (limit 5)
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email ?? null;
+  if (!email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const me = await prisma.user.findUnique({ where: { email } });
+  if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const count = await prisma.coachEwallet.count({ where: { coachId: me.id } });
+  if (count >= 5) return NextResponse.json({ error: "limit" }, { status: 400 });
+
+  const p = CreateBody.parse(await req.json());
+
+  const wallet = await prisma.coachEwallet.create({
+    data: {
+      provider: p.provider,
+      handle: p.handle,
+      coach: { connect: { id: me.id } }, // relation connect (no coachId in data)
+    },
+  });
+
+  return NextResponse.json({ wallet }, { status: 201 });
 }
