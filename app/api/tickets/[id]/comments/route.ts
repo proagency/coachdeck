@@ -1,16 +1,13 @@
-// app/api/tickets/[id]/comments/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const runtime = "nodejs"; // for nodemailer if configured
-
+export const runtime = "nodejs";
 const Body = z.object({ body: z.string().min(1) });
 
 export async function POST(req: NextRequest, ctx: any) {
-  // Next 15: params must be awaited and the 2nd arg should not be strictly typed
   const { id } = await ctx.params;
   if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
 
@@ -24,7 +21,6 @@ export async function POST(req: NextRequest, ctx: any) {
   const me = await prisma.user.findUnique({ where: { email } });
   if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Correct include shape (deck -> include coach & membership->student)
   const ticket = await prisma.ticket.findUnique({
     where: { id },
     include: {
@@ -48,25 +44,20 @@ export async function POST(req: NextRequest, ctx: any) {
     data: { ticketId: ticket.id, authorId: me.id, body: parsed.data.body },
   });
 
-  // Fire-and-forget email notify (won't block the response)
   (async () => {
     try {
-      const toNotify =
-        // if commenter is student, notify coach; otherwise notify student
-        isStudent ? ticket.deck.coach.email : ticket.deck.membership?.student?.email;
-      if (toNotify && process.env.EMAIL_SERVER) {
+      const toEmail = isStudent ? ticket.deck.coach.email : ticket.deck.membership?.student?.email;
+      if (toEmail && process.env.EMAIL_SERVER && process.env.EMAIL_FROM) {
         const nodemailer = await import("nodemailer");
         const transporter = nodemailer.createTransport(process.env.EMAIL_SERVER as any);
         await transporter.sendMail({
           from: process.env.EMAIL_FROM,
-          to: toNotify,
+          to: toEmail,
           subject: `New reply on ticket: ${ticket.title}`,
           text: `${email} replied:\n\n${parsed.data.body}`,
         });
       }
-    } catch {
-      // ignore email failures
-    }
+    } catch {}
   })();
 
   return NextResponse.json({ comment }, { status: 201 });

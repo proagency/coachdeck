@@ -42,25 +42,9 @@ enum BillingTerm {
   YEARLY 
 }
 
-/* --- Payments-specific enums --- */
-enum PaymentType { 
-  ONE_TIME 
-  SUBSCRIPTION 
-  }
-enum PaymentChannel { 
-  BANK 
-  E_WALLET 
-  }
-enum InvoiceStatus { 
-  PENDING 
-  SUBMITTED 
-  UNDER_REVIEW 
-  PAID 
-  REJECTED 
-  CANCELED 
-  }
-
-/* ---------------- Core auth & app models (unchanged where not relevant) ---------------- */
+enum PaymentType { ONE_TIME SUBSCRIPTION }
+enum PaymentChannel { BANK E_WALLET }
+enum InvoiceStatus { PENDING SUBMITTED UNDER_REVIEW PAID REJECTED CANCELED }
 
 model User {
   id            String       @id @default(cuid())
@@ -74,7 +58,6 @@ model User {
   status        UserStatus   @default(ACTIVE)
   createdAt     DateTime     @default(now())
 
-  // Coaching app relations
   decks             Deck[]          @relation("CoachDecks")
   memberships       Membership[]
   tickets           Ticket[]        @relation("AuthorTickets")
@@ -85,15 +68,13 @@ model User {
   invitesCreated    Invite[]        @relation("InvitesCreatedBy")
   invitesAccepted   Invite[]        @relation("InvitesAcceptedBy")
 
-  // Payments relations (FIX: add these opposite sides)
   coachPaymentsConfig CoachPaymentsConfig?
   bankAccounts        CoachBankAccount[]
   ewallets            CoachEwallet[]
   paymentPlans        PaymentPlan[]
-  invoicesAuthored    Invoice[] @relation("InvoiceStudent") // as Student
-  invoicesForCoach    Invoice[] @relation("InvoiceCoach")   // as Coach
+  invoicesAuthored    Invoice[] @relation("InvoiceStudent")
+  invoicesForCoach    Invoice[] @relation("InvoiceCoach")
 
-  // NextAuth v4
   accounts Account[]
   sessions Session[]
 }
@@ -206,9 +187,6 @@ model TicketComment {
   @@index([ticketId])
 }
 
-/* ---------------- Payments models (REPAIRED RELATIONS) ---------------- */
-
-/** 1:1 config with the coach; no child arrays here to avoid opposite-field errors **/
 model CoachPaymentsConfig {
   id            String   @id @default(cuid())
   coachId       String   @unique
@@ -219,7 +197,6 @@ model CoachPaymentsConfig {
   updatedAt     DateTime @updatedAt
 }
 
-/** Bank accounts belong directly to the coach (User). **/
 model CoachBankAccount {
   id            String   @id @default(cuid())
   coachId       String
@@ -234,20 +211,18 @@ model CoachBankAccount {
   @@index([coachId])
 }
 
-/** E-wallet channels belong directly to the coach (User). **/
 model CoachEwallet {
   id        String   @id @default(cuid())
   coachId   String
   coach     User     @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  provider  String   // e.g., GCash, Maya
-  handle    String   // phone number / username
+  provider  String
+  handle    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([coachId])
 }
 
-/** Plans belong directly to the coach (User). **/
 model PaymentPlan {
   id          String       @id @default(cuid())
   coachId     String
@@ -265,7 +240,6 @@ model PaymentPlan {
   @@index([coachId])
 }
 
-/** Invoices connect coach ↔ student, and optionally a plan. **/
 model Invoice {
   id         String         @id @default(cuid())
   coachId    String
@@ -288,8 +262,6 @@ model Invoice {
   @@index([studentId])
   @@index([status])
 }
-
-/* ---------------- NextAuth v4 tables ---------------- */
 
 model Account {
   id                String  @id @default(cuid())
