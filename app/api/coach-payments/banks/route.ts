@@ -22,14 +22,17 @@ export async function POST(req: NextRequest) {
   const count = await prisma.coachBankAccount.count({ where: { coachId: me.id } });
   if (count >= 5) return NextResponse.json({ error: "limit" }, { status: 400 });
 
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  // ✅ Strongly-typed payload (throws if invalid) so fields are required
+  const payload = Body.parse(await req.json());
+  const { bankName, accountName, accountNumber, branch } = payload;
 
-  // ✅ Use relation connect instead of coachId
   const bank = await prisma.coachBankAccount.create({
     data: {
-      ...parsed.data,
-      coach: { connect: { id: me.id } },
+      bankName,
+      accountName,
+      accountNumber,
+      branch, // optional in schema, OK if undefined
+      coach: { connect: { id: me.id } }, // use relation connect
     },
   });
 

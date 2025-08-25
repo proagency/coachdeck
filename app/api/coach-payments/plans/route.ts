@@ -1,3 +1,4 @@
+// app/api/coach-payments/plans/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -7,7 +8,7 @@ import { z } from "zod";
 const Body = z.object({
   name: z.string().min(1),
   description: z.string().optional().nullable(),
-  type: z.enum(["ONE_TIME","SUBSCRIPTION"]),
+  type: z.enum(["ONE_TIME", "SUBSCRIPTION"]),
   amount: z.number().int().nonnegative(),
   currency: z.string().default("PHP"),
   active: z.boolean().default(true),
@@ -21,13 +22,15 @@ export async function POST(req: NextRequest) {
   const me = await prisma.user.findUnique({ where: { email } });
   if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
-
-  // ✅ relation connect for coach
+  const p = Body.parse(await req.json()); // ✅ no safeParse
   const plan = await prisma.paymentPlan.create({
     data: {
-      ...parsed.data,
+      name: p.name,
+      description: p.description ?? null,
+      type: p.type,
+      amount: p.amount,
+      currency: p.currency,
+      active: p.active,
       coach: { connect: { id: me.id } },
     },
   });

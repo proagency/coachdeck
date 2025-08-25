@@ -1,3 +1,4 @@
+// app/api/coach-payments/ewallets/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -20,13 +21,13 @@ export async function POST(req: NextRequest) {
   const count = await prisma.coachEwallet.count({ where: { coachId: me.id } });
   if (count >= 5) return NextResponse.json({ error: "limit" }, { status: 400 });
 
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  const payload = Body.parse(await req.json());
+  const { provider, handle } = payload;
 
-  // ✅ relation connect (no coachId in data)
   const wallet = await prisma.coachEwallet.create({
     data: {
-      ...parsed.data,
+      provider,
+      handle,
       coach: { connect: { id: me.id } },
     },
   });
