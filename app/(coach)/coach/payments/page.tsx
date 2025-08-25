@@ -20,7 +20,9 @@ export default async function CoachPaymentsPage() {
 
   const cfg = await prisma.coachPaymentsConfig.upsert({ where: { coachId: me.id }, update: {}, create: { coachId: me.id } });
   const plans = await prisma.paymentPlan.findMany({ where: { coachId: me.id }, orderBy: { createdAt: "desc" }});
-  const invoices = await prisma.invoice.findMany({ where: { coachId: me.id }, include: { student:true, plan:true, deck:true }, orderBy: { createdAt: "desc" } });
+  const invoices = await prisma.invoice.findMany({ where: { coachId: me.id }, include: { student: true, plan: true }, orderBy: { createdAt: "desc" },
+});
+
 
   return (
     <div className="space-y-6">
