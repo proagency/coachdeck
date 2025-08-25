@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email ?? null;
   if (!email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const me = await prisma.user.findUnique({ where: { email } });
   if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -22,6 +23,13 @@ export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
 
-  const wallet = await prisma.coachEwallet.create({ data: { coachId: me.id, ...parsed.data } });
+  // ✅ relation connect (no coachId in data)
+  const wallet = await prisma.coachEwallet.create({
+    data: {
+      ...parsed.data,
+      coach: { connect: { id: me.id } },
+    },
+  });
+
   return NextResponse.json({ wallet }, { status: 201 });
 }

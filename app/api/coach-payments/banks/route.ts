@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email ?? null;
   if (!email) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const me = await prisma.user.findUnique({ where: { email } });
   if (!me) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
@@ -24,6 +25,13 @@ export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
 
-  const bank = await prisma.coachBankAccount.create({ data: { coachId: me.id, ...parsed.data } });
+  // ✅ Use relation connect instead of coachId
+  const bank = await prisma.coachBankAccount.create({
+    data: {
+      ...parsed.data,
+      coach: { connect: { id: me.id } },
+    },
+  });
+
   return NextResponse.json({ bank }, { status: 201 });
 }
