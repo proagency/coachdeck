@@ -1,93 +1,60 @@
+// app/(student)/payments/page.tsx
+import { prisma } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import CreateInvoiceButton from "@/components/student/CreateInvoiceButton";
 
-export const metadata = { title: "Payments" };
-export const dynamic = "force-dynamic";
+export const metadata = { title: "Your Invoices — CoachDeck" };
 
-export default async function PaymentsPage() {
+export default async function StudentPaymentsIndexPage() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return notFound();
+  const email = session?.user?.email ?? null;
+  if (!email) return notFound();
 
-  const me = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true, role: true }});
+  const me = await prisma.user.findUnique({ where: { email } });
   if (!me || me.role !== "STUDENT") return notFound();
 
-  const mem = await prisma.membership.findFirst({ where: { studentId: me.id }, include: { deck: { include: { coach: true } } } });
-  const coachId = mem?.deck?.coachId || null;
-
-  let plans: any[] = [];
-  let banks: any[] = [];
-  let ewallets: any[] = [];
-  let toggles: any = null;
-
-  if (coachId) {
-    toggles = await prisma.coachPaymentsConfig.findUnique({ where: { coachId } });
-    plans = await prisma.paymentPlan.findMany({ where: { coachId, active: true }, orderBy: { createdAt: "desc" } });
-    banks = await prisma.coachBankAccount.findMany({ where: { coachId }, orderBy: { createdAt: "desc" } });
-    ewallets = await prisma.coachEwallet.findMany({ where: { coachId }, orderBy: { createdAt: "desc" } });
-  }
-
-  const invoices = await prisma.invoice.findMany({ where: { studentId: me.id }, include: { plan: true, coach: true, deck: true }, orderBy: { createdAt: "desc" } });
+  // ✅ remove deck from include
+  const invoices = await prisma.invoice.findMany({
+    where: { studentId: me.id },
+    include: { plan: true, coach: true },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold">Payments</h1>
+      <h1 className="text-2xl font-semibold">Your Invoices</h1>
 
-      <section className="card">
-        <div className="font-medium mb-2">Available Plans</div>
-        {coachId ? (
-          <>
-            {plans.length ? (
-              <ul className="grid md:grid-cols-2 gap-3">
-                {plans.map((p)=>(
-                  <li key={p.id} className="border rounded p-3 space-y-2">
-                    <div className="font-medium">{p.name} <span className="muted">({p.type})</span></div>
-                    <div>₱{(p.amountCents/100).toFixed(2)}</div>
-                    <CreateInvoiceButton planId={p.id} enableBank={!!toggles?.enableBank && banks.length>0} enableEwallet={!!toggles?.enableEwallet && ewallets.length>0} />
-                  </li>
-                ))}
-              </ul>
-            ) : <div className="muted">No plans published yet.</div>}
-            <div className="text-sm muted mt-4 space-y-3">
-              {toggles?.enableBank && banks.length>0 && (
-                <div>
-                  <div className="font-medium">Bank transfer</div>
-                  <ul className="list-disc ml-4">
-                    {banks.map(b=>(<li key={b.id}>{b.bankName}{b.bankBranch ? " — "+b.bankBranch : ""} · {b.accountName} · {b.accountNumber}</li>))}
-                  </ul>
-                </div>
-              )}
-              {toggles?.enableEwallet && ewallets.length>0 && (
-                <div>
-                  <div className="font-medium">e-Wallets</div>
-                  <ul className="list-disc ml-4">
-                    {ewallets.map(w=>(<li key={w.id}>{w.provider} · {w.accountName} · {w.accountNumber}{w.notes ? " — "+w.notes : ""}</li>))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </>
-        ) : <div className="muted">No coach found for your deck yet.</div>}
-      </section>
+      <div className="grid gap-3">
+        {invoices.length === 0 && (
+          <div className="card">
+            <div className="muted">No invoices yet.</div>
+          </div>
+        )}
 
-      <section className="card">
-        <div className="font-medium mb-2">My Invoices</div>
-        <ul className="space-y-2">
-          {invoices.map((i)=>(
-            <li key={i.id} className="border rounded p-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="font-medium">{i.plan?.name} — ₱{(i.amountCents/100).toFixed(2)} <span className="muted">({i.channel})</span></div>
-                <div className="muted text-xs">Status: {i.status} · {new Date(i.createdAt).toLocaleString()}</div>
+        {invoices.map((inv) => (
+          <div key={inv.id} className="card flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="font-medium">{inv.title}</div>
+              {inv.description ? <div className="muted">{inv.description}</div> : null}
+              <div className="text-sm">
+                Coach: {inv.coach.email} • Plan: {inv.plan?.name ?? "—"}
               </div>
-              <Link className="btn" href={"/payments/"+i.id}>Open</Link>
-            </li>
-          ))}
-          {invoices.length===0 && <li className="muted">No invoices yet.</li>}
-        </ul>
-      </section>
+              <div className="text-sm">Status: {inv.status}</div>
+            </div>
+            <div className="text-right">
+              <div className="font-semibold">₱{inv.amount.toLocaleString()} {inv.currency}</div>
+              <Link
+                href={`/payments/${inv.id}`}
+                className="btn mt-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white"
+              >
+                View / Pay
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
